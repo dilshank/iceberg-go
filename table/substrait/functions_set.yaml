@@ -17,6 +17,7 @@
 
 %YAML 1.2
 ---
+urn: "extension:io.apache.iceberg-go:functions_set"
 scalar_functions:
   -
     name: "is_in"

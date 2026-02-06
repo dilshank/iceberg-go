@@ -24,9 +24,9 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/compute/exprs"
 	"github.com/apache/iceberg-go"
-	"github.com/substrait-io/substrait-go/v4/expr"
-	"github.com/substrait-io/substrait-go/v4/extensions"
-	"github.com/substrait-io/substrait-go/v4/types"
+	"github.com/substrait-io/substrait-go/v7/expr"
+	"github.com/substrait-io/substrait-go/v7/extensions"
+	"github.com/substrait-io/substrait-go/v7/types"
 )
 
 //go:embed functions_set.yaml
@@ -35,6 +35,7 @@ var funcsetYAML string
 var (
 	collection = extensions.GetDefaultCollectionWithNoError()
 	funcSetURI = "https://github.com/apache/iceberg-go/blob/main/table/substrait/functions_set.yaml"
+	funcSetURN = "extension:io.apache.iceberg-go:functions_set"
 )
 
 func init() {
@@ -160,24 +161,24 @@ func (convertToSubstrait) VisitUUID() types.Type        { return &types.UUIDType
 var _ iceberg.SchemaVisitorPerPrimitiveType[types.Type] = (*convertToSubstrait)(nil)
 
 var (
-	boolURI    = extensions.SubstraitDefaultURIPrefix + "functions_boolean.yaml"
-	compareURI = extensions.SubstraitDefaultURIPrefix + "functions_comparison.yaml"
-	stringURI  = extensions.SubstraitDefaultURIPrefix + "functions_string.yaml"
+	boolURN    = extensions.SubstraitDefaultURNPrefix + "functions_boolean"
+	compareURN = extensions.SubstraitDefaultURNPrefix + "functions_comparison"
+	stringURN  = extensions.SubstraitDefaultURNPrefix + "functions_string"
 
-	notID          = extensions.ID{URI: boolURI, Name: "not"}
-	andID          = extensions.ID{URI: boolURI, Name: "and"}
-	orID           = extensions.ID{URI: boolURI, Name: "or"}
-	isNaNID        = extensions.ID{URI: compareURI, Name: "is_nan"}
-	isNullID       = extensions.ID{URI: compareURI, Name: "is_null"}
-	isNotNullID    = extensions.ID{URI: compareURI, Name: "is_not_null"}
-	equalID        = extensions.ID{URI: compareURI, Name: "equal"}
-	notEqualID     = extensions.ID{URI: compareURI, Name: "not_equal"}
-	greaterEqualID = extensions.ID{URI: compareURI, Name: "gte"}
-	greaterID      = extensions.ID{URI: compareURI, Name: "gt"}
-	lessEqualID    = extensions.ID{URI: compareURI, Name: "lte"}
-	lessID         = extensions.ID{URI: compareURI, Name: "lt"}
-	startsWithID   = extensions.ID{URI: stringURI, Name: "starts_with"}
-	isInID         = extensions.ID{URI: funcSetURI, Name: "is_in"}
+	notID          = extensions.ID{URN: boolURN, Name: "not"}
+	andID          = extensions.ID{URN: boolURN, Name: "and"}
+	orID           = extensions.ID{URN: boolURN, Name: "or"}
+	isNaNID        = extensions.ID{URN: compareURN, Name: "is_nan"}
+	isNullID       = extensions.ID{URN: compareURN, Name: "is_null"}
+	isNotNullID    = extensions.ID{URN: compareURN, Name: "is_not_null"}
+	equalID        = extensions.ID{URN: compareURN, Name: "equal"}
+	notEqualID     = extensions.ID{URN: compareURN, Name: "not_equal"}
+	greaterEqualID = extensions.ID{URN: compareURN, Name: "gte"}
+	greaterID      = extensions.ID{URN: compareURN, Name: "gt"}
+	lessEqualID    = extensions.ID{URN: compareURN, Name: "lte"}
+	lessID         = extensions.ID{URN: compareURN, Name: "lt"}
+	startsWithID   = extensions.ID{URN: stringURN, Name: "starts_with"}
+	isInID         = extensions.ID{URN: funcSetURN, Name: "is_in"}
 )
 
 type toSubstraitExpr struct {
