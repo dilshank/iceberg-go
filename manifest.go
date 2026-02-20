@@ -609,9 +609,16 @@ func NewManifestReader(file ManifestFile, in io.Reader) (*ManifestReader, error)
 	metadata := dec.Metadata()
 	sc := dec.Schema()
 
-	formatVersion, err := strconv.Atoi(string(metadata["format-version"]))
-	if err != nil {
-		return nil, fmt.Errorf("manifest file's 'format-version' metadata is invalid: %w", err)
+	var formatVersion int
+	if fv := string(metadata["format-version"]); fv != "" {
+		formatVersion, err = strconv.Atoi(fv)
+		if err != nil {
+			return nil, fmt.Errorf("manifest file's 'format-version' metadata is invalid: %w", err)
+		}
+	} else {
+		// format-version metadata missing (common with PyIceberg / tabulario REST).
+		// Fall back to the version from the manifest list entry.
+		formatVersion = file.Version()
 	}
 	if formatVersion != file.Version() {
 		return nil, fmt.Errorf("manifest file's 'format-version' metadata indicates version %d, but entry from manifest list indicates version %d",
@@ -806,9 +813,27 @@ func ReadManifestList(in io.Reader) ([]ManifestFile, error) {
 		return nil, err
 	}
 
-	version, err := strconv.Atoi(string(dec.Metadata()["format-version"]))
-	if err != nil {
-		return nil, fmt.Errorf("invalid format-version: %w", err)
+	var version int
+	if fv := string(dec.Metadata()["format-version"]); fv != "" {
+		version, err = strconv.Atoi(fv)
+		if err != nil {
+			return nil, fmt.Errorf("invalid format-version: %w", err)
+		}
+	} else {
+		// format-version metadata missing (common with PyIceberg / tabulario REST).
+		// Infer from the Avro schema: v1 schemas lack "sequence_number" field.
+		hasSeqNum := false
+		for _, f := range sc.(*avro.RecordSchema).Fields() {
+			if f.Name() == "sequence_number" {
+				hasSeqNum = true
+				break
+			}
+		}
+		if hasSeqNum {
+			version = 2
+		} else {
+			version = 1
+		}
 	}
 
 	if version == 1 {
