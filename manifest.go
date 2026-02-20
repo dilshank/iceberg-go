@@ -170,6 +170,71 @@ func (f *fallbackManifestFileV1) toFile() *manifestFile {
 	return f.manifestFileV1.toFile()
 }
 
+// fallbackManifestFileV2 handles v2+ manifest list entries written by implementations
+// (such as DuckDB's Iceberg extension) that wrap every field in nullable union schemas
+// (["null", T]) instead of plain types. hamba/avro requires pointer types for nullable
+// union decoding. This struct shadows every non-pointer field from manifestFile with a
+// pointer equivalent, then copies decoded values back in toFile().
+type fallbackManifestFileV2 struct {
+	manifestFile
+	Path               *string          `avro:"manifest_path"`
+	Len                *int64           `avro:"manifest_length"`
+	SpecID             *int32           `avro:"partition_spec_id"`
+	Content            *ManifestContent `avro:"content"`
+	SeqNumber          *int64           `avro:"sequence_number"`
+	MinSeqNumber       *int64           `avro:"min_sequence_number"`
+	AddedSnapshotID    *int64           `avro:"added_snapshot_id"`
+	AddedFilesCount    *int32           `avro:"added_files_count"`
+	ExistingFilesCount *int32           `avro:"existing_files_count"`
+	DeletedFilesCount  *int32           `avro:"deleted_files_count"`
+	AddedRowsCount     *int64           `avro:"added_rows_count"`
+	ExistingRowsCount  *int64           `avro:"existing_rows_count"`
+	DeletedRowsCount   *int64           `avro:"deleted_rows_count"`
+}
+
+func (f *fallbackManifestFileV2) toFile() *manifestFile {
+	if f.Path != nil {
+		f.manifestFile.Path = *f.Path
+	}
+	if f.Len != nil {
+		f.manifestFile.Len = *f.Len
+	}
+	if f.SpecID != nil {
+		f.manifestFile.SpecID = *f.SpecID
+	}
+	if f.Content != nil {
+		f.manifestFile.Content = *f.Content
+	}
+	if f.SeqNumber != nil {
+		f.manifestFile.SeqNumber = *f.SeqNumber
+	}
+	if f.MinSeqNumber != nil {
+		f.manifestFile.MinSeqNumber = *f.MinSeqNumber
+	}
+	if f.AddedSnapshotID != nil {
+		f.manifestFile.AddedSnapshotID = *f.AddedSnapshotID
+	}
+	if f.AddedFilesCount != nil {
+		f.manifestFile.AddedFilesCount = *f.AddedFilesCount
+	}
+	if f.ExistingFilesCount != nil {
+		f.manifestFile.ExistingFilesCount = *f.ExistingFilesCount
+	}
+	if f.DeletedFilesCount != nil {
+		f.manifestFile.DeletedFilesCount = *f.DeletedFilesCount
+	}
+	if f.AddedRowsCount != nil {
+		f.manifestFile.AddedRowsCount = *f.AddedRowsCount
+	}
+	if f.ExistingRowsCount != nil {
+		f.manifestFile.ExistingRowsCount = *f.ExistingRowsCount
+	}
+	if f.DeletedRowsCount != nil {
+		f.manifestFile.DeletedRowsCount = *f.DeletedRowsCount
+	}
+	return &f.manifestFile
+}
+
 type manifestFileV1 struct {
 	manifestFile
 	AddedFilesCount    *int32 `avro:"added_files_count"`
@@ -852,6 +917,16 @@ func ReadManifestList(in io.Reader) ([]ManifestFile, error) {
 	case 1:
 		return decodeManifestsWithFallback[*manifestFileV1](dec)
 	default:
+		// Check if writer used union schema for manifest_path (PyIceberg/tabulario).
+		// Same pattern as the v1 added_snapshot_id union check above.
+		for _, f := range sc.(*avro.RecordSchema).Fields() {
+			if f.Name() == "manifest_path" {
+				if f.Type().Type() == avro.Union {
+					return decodeManifestsWithFallback[*fallbackManifestFileV2](dec)
+				}
+				break
+			}
+		}
 		return decodeManifests[*manifestFile](dec, version)
 	}
 }
