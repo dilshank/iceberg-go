@@ -917,12 +917,19 @@ func ReadManifestList(in io.Reader) ([]ManifestFile, error) {
 	case 1:
 		return decodeManifestsWithFallback[*manifestFileV1](dec)
 	default:
-		// Check if writer used union schema for manifest_path (PyIceberg/tabulario).
+		// Check if writer used nullable union schemas (e.g. DuckDB Iceberg extension).
 		// Same pattern as the v1 added_snapshot_id union check above.
 		for _, f := range sc.(*avro.RecordSchema).Fields() {
 			if f.Name() == "manifest_path" {
 				if f.Type().Type() == avro.Union {
-					return decodeManifestsWithFallback[*fallbackManifestFileV2](dec)
+					files, err := decodeManifestsWithFallback[*fallbackManifestFileV2](dec)
+					if err != nil {
+						return nil, err
+					}
+					for _, mf := range files {
+						mf.setVersion(version)
+					}
+					return files, nil
 				}
 				break
 			}
