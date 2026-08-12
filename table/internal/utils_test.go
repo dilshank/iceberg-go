@@ -18,6 +18,7 @@
 package internal_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -70,6 +71,72 @@ func TestTruncateUpperBoundString(t *testing.T) {
 func TestTruncateUpperBoundBinary(t *testing.T) {
 	assert.Equal(t, []byte{0x01, 0x03}, internal.TruncateUpperBoundBinary([]byte{0x01, 0x02, 0x03}, 2))
 	assert.Nil(t, internal.TruncateUpperBoundBinary([]byte{0xff, 0xff, 0x00}, 2))
+}
+
+// The input iterator reports errors by panicking (binPackRecords does exactly
+// this), and it is drained on MapExec's own producer goroutine, out of reach of
+// any recover in the caller. MapExec must turn that into the error it already
+// reports rather than letting it kill the process.
+func TestMapExecRecoversPanicFromIterator(t *testing.T) {
+	boom := errors.New("cast column 10 (month) from utf8 to int64")
+
+	panicking := func(yield func(int) bool) {
+		if !yield(1) {
+			return
+		}
+		panic(boom)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		var last error
+		for _, err := range internal.MapExec(3, panicking, func(i int) (int, error) {
+			return i * 2, nil
+		}) {
+			if err != nil {
+				last = err
+			}
+		}
+		done <- last
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "a panic in the input iterator must surface as an error")
+		assert.ErrorIs(t, err, boom, "the original error must be preserved for the caller")
+	case <-time.After(10 * time.Second):
+		// Skipping close(ch) on the panic path strands the workers, so out never
+		// closes and the consumer blocks forever instead of seeing the error.
+		t.Fatal("MapExec never returned: consumer deadlocked after the panic")
+	}
+}
+
+// A non-error panic value must not be dropped either.
+func TestMapExecRecoversNonErrorPanic(t *testing.T) {
+	panicking := func(yield func(int) bool) {
+		panic("something went very wrong")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		var last error
+		for _, err := range internal.MapExec(2, panicking, func(i int) (int, error) {
+			return i, nil
+		}) {
+			if err != nil {
+				last = err
+			}
+		}
+		done <- last
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "something went very wrong")
+	case <-time.After(10 * time.Second):
+		t.Fatal("MapExec never returned after a non-error panic")
+	}
 }
 
 func TestMapExecFinish(t *testing.T) {

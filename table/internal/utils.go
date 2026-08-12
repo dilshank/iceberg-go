@@ -546,11 +546,42 @@ func MapExec[T, S any](nWorkers int, slice iter.Seq[T], fn func(T) (S, error)) i
 	var err error
 	go func() {
 		defer close(out)
+		defer func() {
+			// The input iterator transports errors by panicking: an iter.Seq
+			// has no error channel, so binPackRecords and recordsToDataFiles
+			// call panic(err) and rely on a recover further up. That works for
+			// recordsToDataFiles' own synchronous body, which recovers itself,
+			// but the iterator is actually drained here — on this goroutine —
+			// where a deferred recover in a caller cannot reach it. Without
+			// this, a single unconvertible record takes down the whole process
+			// instead of failing the one write that produced it.
+			//
+			// Recover before draining the workers so the panic becomes the
+			// error the returned iterator already reports below.
+			if r := recover(); r != nil {
+				if e, ok := r.(error); ok {
+					err = fmt.Errorf("panic while producing work items: %w", e)
+				} else {
+					err = fmt.Errorf("panic while producing work items: %v", r)
+				}
+			}
+
+			// Closing ch here rather than after the range covers both paths: a
+			// panic skips the normal close, and the workers would then block on
+			// a channel that is never closed, so out would never close and the
+			// consumer would hang instead of seeing the error.
+			close(ch)
+
+			// Keep the panic as the reported error when there is one — the
+			// workers' error is usually just fallout from it.
+			if werr := g.Wait(); werr != nil && err == nil {
+				err = werr
+			}
+		}()
+
 		for v := range slice {
 			ch <- v
 		}
-		close(ch)
-		err = g.Wait()
 	}()
 
 	return func(yield func(S, error) bool) {
